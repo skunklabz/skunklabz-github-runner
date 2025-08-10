@@ -41,7 +41,7 @@ skunklabz-github-runner/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/skunklabz-github-runner.git
+git clone https://github.com/skunklabz/skunklabz-github-runner.git
 cd skunklabz-github-runner
 ```
 
