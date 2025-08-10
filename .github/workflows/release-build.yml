@@ -1,0 +1,160 @@
+name: Build and Push to GHCR
+
+on:
+  schedule:
+    # Check for updates every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+  repository_dispatch:
+    # Allow external triggers
+    types: [runner-images-updated]
+  push:
+    branches: [main]
+    paths:
+      - 'runner-images/**'
+      - 'dockerfiles/**'
+      - '.github/workflows/ghcr-build.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      has-updates: ${{ steps.check.outputs.has-updates }}
+      latest-commit: ${{ steps.check.outputs.latest-commit }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Check for runner-images updates
+        id: check
+        run: |
+          cd runner-images
+          git fetch origin main
+          LOCAL_COMMIT=$(git rev-parse HEAD)
+          REMOTE_COMMIT=$(git rev-parse origin/main)
+          
+          echo "Local commit: $LOCAL_COMMIT"
+          echo "Remote commit: $REMOTE_COMMIT"
+          
+          if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
+            echo "Updates found!"
+            echo "has-updates=true" >> $GITHUB_OUTPUT
+            echo "latest-commit=$REMOTE_COMMIT" >> $GITHUB_OUTPUT
+          else
+            echo "No updates found."
+            echo "has-updates=false" >> $GITHUB_OUTPUT
+            echo "latest-commit=$LOCAL_COMMIT" >> $GITHUB_OUTPUT
+          fi
+
+  generate-dockerfiles:
+    needs: [check-updates]
+    if: always() && (needs.check-updates.outputs.has-updates == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Generate Dockerfiles
+        run: |
+          chmod +x scripts/generate-dockerfiles.sh
+          ./scripts/generate-dockerfiles.sh
+      
+      - name: Check for Dockerfile changes
+        id: dockerfile-changes
+        run: |
+          if git diff --quiet HEAD -- dockerfiles/; then
+            echo "No Dockerfile changes detected"
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Dockerfile changes detected"
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Commit updated Dockerfiles
+        if: steps.dockerfile-changes.outputs.has-changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dockerfiles/
+          git commit -m "Update Dockerfiles from runner-images ${{ needs.check-updates.outputs.latest-commit }}"
+          git push
+
+  build-and-push:
+    needs: [check-updates, generate-dockerfiles]
+    if: always() && (needs.check-updates.outputs.has-updates == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        ubuntu-version: ['24.04']
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Pull latest changes
+        run: git pull origin main
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get version for tagging
+        id: get-version
+        run: |
+          # Get the version from the VERSION file
+          VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-ubuntu-${{ matrix.ubuntu-version }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=v${{ steps.get-version.outputs.version }}
+            type=raw,value=${{ steps.get-version.outputs.version }}
+            type=raw,value=run-${{ github.run_number }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.get-version.outputs.version }}
+            org.opencontainers.image.title=SkunkLabz GitHub Runner Ubuntu ${{ matrix.ubuntu-version }}
+            org.opencontainers.image.description=Custom GitHub Actions runner based on Ubuntu ${{ matrix.ubuntu-version }}
+      
+      - name: Build and push Ubuntu ${{ matrix.ubuntu-version }} runner
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dockerfiles/ubuntu/${{ matrix.ubuntu-version }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

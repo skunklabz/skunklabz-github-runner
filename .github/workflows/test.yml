@@ -1,0 +1,145 @@
+name: Test Setup
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Initialize submodules
+        run: |
+          echo "Initializing submodules..."
+          git submodule update --init --recursive
+          echo "Submodule status:"
+          git submodule status
+      
+      - name: Verify submodule structure
+        run: |
+          echo "Checking submodule directories..."
+          ls -la
+          if [ -d "runner-images" ]; then
+            echo "✓ runner-images directory found"
+            ls -la runner-images/
+            if [ -d "runner-images/images" ]; then
+              echo "✓ images directory found"
+              ls -la runner-images/images/
+              if [ -d "runner-images/images/ubuntu" ]; then
+                echo "✓ ubuntu directory found"
+                ls -la runner-images/images/ubuntu/
+              else
+                echo "✗ ubuntu directory not found"
+                exit 1
+              fi
+            else
+              echo "✗ images directory not found"
+              exit 1
+            fi
+          else
+            echo "✗ runner-images directory not found"
+            exit 1
+          fi
+
+  test-submodule:
+    needs: setup
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Verify submodule
+        run: |
+          echo "Checking submodule status..."
+          git submodule status
+          
+          if [ ! -d "runner-images" ]; then
+            echo "ERROR: runner-images submodule not found!"
+            exit 1
+          fi
+          
+          if [ ! -d "runner-images/images/ubuntu" ]; then
+            echo "ERROR: Ubuntu images directory not found in submodule!"
+            exit 1
+          fi
+          
+          echo "Submodule verification passed!"
+      
+      - name: List available Ubuntu versions
+        run: |
+          echo "Available Ubuntu versions:"
+          ls -la runner-images/images/ubuntu/
+      
+      - name: Generate Dockerfiles
+        run: |
+          echo "Generating Dockerfiles from Microsoft's runner-images..."
+          chmod +x scripts/generate-dockerfiles.sh
+          ./scripts/generate-dockerfiles.sh
+          echo "✓ Dockerfiles generated"
+          ls -la dockerfiles/ubuntu/24.04/
+      
+      - name: Check Dockerfile existence
+        run: |
+          for version in 24.04; do
+            if [ -f "dockerfiles/ubuntu/$version/Dockerfile" ]; then
+              echo "✓ Dockerfile found for Ubuntu $version"
+            else
+              echo "✗ Dockerfile NOT found for Ubuntu $version"
+              exit 1
+            fi
+          done
+      
+      - name: Test script permissions
+        run: |
+          if [ -x "scripts/trigger-build.sh" ]; then
+            echo "✓ trigger-build.sh is executable"
+          else
+            echo "✗ trigger-build.sh is not executable"
+            chmod +x scripts/trigger-build.sh
+            echo "  Made executable"
+          fi
+          
+          if [ -x "scripts/setup.sh" ]; then
+            echo "✓ setup.sh is executable"
+          else
+            echo "✗ setup.sh is not executable"
+            chmod +x scripts/setup.sh
+            echo "  Made executable"
+          fi
+      
+      - name: Test workflow files
+        run: |
+          echo "Checking workflow files..."
+          if [ -f ".github/workflows/build-runners.yml" ]; then
+            echo "✓ build-runners.yml found"
+          else
+            echo "✗ build-runners.yml not found"
+            exit 1
+          fi
+          
+          if [ -f ".github/workflows/webhook-trigger.yml" ]; then
+            echo "✓ webhook-trigger.yml found"
+          else
+            echo "✗ webhook-trigger.yml not found"
+            exit 1
+          fi
+          
+          echo "All workflow files verified!"
+      
+      - name: Success
+        run: |
+          echo "🎉 All tests passed! Your setup is working correctly."
+          echo ""
+          echo "Next steps:"
+          echo "1. Configure Docker Hub secrets in GitHub"
+          echo "2. Push your changes to trigger the first build"
+          echo "3. Monitor the Actions tab for build progress"

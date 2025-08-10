@@ -1,0 +1,17 @@
+# GitHub Container Registry Package Configuration
+# This file defines the package structure for GHCR
+
+packages:
+  - name: ubuntu-24.04-runner
+    description: "Ubuntu 24.04 GitHub Actions Runner based on Microsoft's runner-images"
+    visibility: public
+    topics:
+      - github-actions
+      - runner
+      - ubuntu
+      - docker
+      - ci-cd
+    readme: true
+    license: MIT
+    homepage: "https://github.com/skunklabz/skunklabz-github-runner"
+    repository: "https://github.com/skunklabz/skunklabz-github-runner"
