@@ -1,0 +1,37 @@
+# Code Owners for SkunkLabz GitHub Runner Images
+#
+# This file defines who should be automatically requested for review
+# when changes are made to specific files or directories.
+#
+# Order is important; the last matching pattern takes the most precedence.
+
+# Global fallback - all files
+* @skunklabz
+
+# Core build and deployment files
+dockerfiles/ @skunklabz
+scripts/ @skunklabz
+.github/workflows/ @skunklabz
+
+# Configuration files
+*.json @skunklabz
+*.yml @skunklabz
+*.yaml @skunklabz
+Dockerfile @skunklabz
+*.sh @skunklabz
+
+# Documentation (can be reviewed by maintainer)
+*.md @skunklabz
+docs/ @skunklabz
+
+# Security and compliance files
+SECURITY.md @skunklabz
+LICENSE @skunklabz
+.github/CODEOWNERS @skunklabz
+
+# CI/CD and automation
+.github/ @skunklabz
+
+# Version control and git configuration
+.gitignore @skunklabz
+.gitmodules @skunklabz
