@@ -128,7 +128,13 @@ if [ ! -f ".runner" ]; then
         echo "Auto-configuring runner with URL: $GITHUB_URL"
         
         # Configure the runner with the provided environment variables
-        ./config.sh --url "$GITHUB_URL" --token "$GITHUB_TOKEN" --unattended --replace
+        if [ -n "${RUNNER_LABELS:-}" ]; then
+            echo "Configuring runner with labels: $RUNNER_LABELS"
+            ./config.sh --url "$GITHUB_URL" --token "$GITHUB_TOKEN" --labels "$RUNNER_LABELS" --unattended --replace
+        else
+            echo "No labels specified, configuring runner without custom labels"
+            ./config.sh --url "$GITHUB_URL" --token "$GITHUB_TOKEN" --unattended --replace
+        fi
         
         # Check if configuration was successful
         if [ -f ".runner" ]; then
