@@ -102,7 +102,9 @@ jobs:
       
       - name: Update submodule
         run: |
-          git submodule update --remote --merge
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git submodule update --remote --rebase
           git add runner-images
           git commit -m "Update runner-images submodule to ${{ needs.check-updates.outputs.latest-commit }}"
           git push
